@@ -1,6 +1,7 @@
 package com.example.d038395.audioupanddown;
 
 import android.content.Context;
+import android.media.MediaPlayer;
 import android.os.Environment;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
@@ -14,43 +15,66 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.io.IOException;
 
 
 public class MainActivity extends ActionBarActivity {
 
-    @Override
+    private  ListView listView;
+    private  File filepath;
+    private class myAudioFilenameFilter implements FilenameFilter {
+        @Override
+        public boolean accept(File dir, String filename) {
+            String[] _ext ={".mp3",".wav",".3gp",".m4a"};
+            int len=filename.length();
+            if(len<=4)
+                return false;
+            String ext=filename.substring(len-4,len).toLowerCase();
+            for(String str:_ext){
+                if(ext.equals(str))
+                    return true;
+            }
+            return false;
+        }
+    }
+    private final myAudioFilenameFilter myfilter =new myAudioFilenameFilter();
+
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        final String filePathString= Environment.getExternalStorageDirectory().getPath()+
+        String filePathString= Environment.getExternalStorageDirectory().getPath()+
                 File.separator+getString(R.string.app_name);
-        final File filepath= new File(filePathString);
+        filepath= new File(filePathString);
         if (!filepath.isDirectory())
             filepath.mkdir();
-        String[] filelistStr=filepath.list(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String filename) {
-                String mp3=".mp3";
-                String wav=".wav";
-                String _3gp=".3gp";
-                int len=filename.length();
-                if(len<=4)
-                    return false;
-                String ext=filename.substring(len-4,len).toLowerCase();
-                return (ext.equals(mp3) || ext.equals(wav) || ext.equals(_3gp));
-            }
-        });
-        ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,filelistStr);;
-        ListView listView = (ListView) findViewById(R.id.list_item);
-        listView.setAdapter(arrayAdapter);
+        listView = (ListView) findViewById(R.id.list_item);
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                Toast.makeText(view.getContext(),
-                        (String)parent.getItemAtPosition(position),
-                        Toast.LENGTH_SHORT).show();
+                String audioSelect = filepath.getPath()
+                        + File.separator + parent.getItemAtPosition(position);
+                MediaPlayer mediaPlayer = new MediaPlayer();
+                try {
+                    mediaPlayer.setDataSource(audioSelect);
+                    mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                        @Override
+                        public void onCompletion(MediaPlayer mp) {
+                            mp.release();
+                        }
+                    });
+                    mediaPlayer.prepare();
+                    mediaPlayer.start();
+                } catch (IOException e) {
+                    Toast.makeText(view.getContext(),
+                            "can't play the media", Toast.LENGTH_LONG).show();
+                }
+
             }
         });
+        String[] fileListStr=filepath.list(myfilter);
+        ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
+        listView.setAdapter(arrayAdapter);
+
     }
 
     @Override
@@ -68,10 +92,20 @@ public class MainActivity extends ActionBarActivity {
         int id = item.getItemId();
 
         //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
+        switch (id){
+            case R.id.action_settings:
+                return true;
+            case R.id.action_refresh:
+                String[] fileListStr=filepath.list(myfilter);
+                ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
+                listView.setAdapter(arrayAdapter);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
         }
 
-        return super.onOptionsItemSelected(item);
+
     }
+
+
 }
