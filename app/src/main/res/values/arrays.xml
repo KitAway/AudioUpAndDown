@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="contextMenuItem">
+        <item>Play</item>
+        <item>Transcribe</item>
+        <item>Rename</item>
+        <item>Delete</item>
+    </string-array>
+</resources>

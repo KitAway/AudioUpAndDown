@@ -1,10 +1,13 @@
 package com.example.d038395.audioupanddown;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.media.MediaPlayer;
 import android.os.Environment;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -22,6 +25,7 @@ public class MainActivity extends ActionBarActivity {
 
     private  ListView listView;
     private  File filepath;
+    private String[] fileListStr;
     private class myAudioFilenameFilter implements FilenameFilter {
         @Override
         public boolean accept(File dir, String filename) {
@@ -53,29 +57,16 @@ public class MainActivity extends ActionBarActivity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 String audioSelect = filepath.getPath()
                         + File.separator + parent.getItemAtPosition(position);
-                MediaPlayer mediaPlayer = new MediaPlayer();
-                try {
-                    mediaPlayer.setDataSource(audioSelect);
-                    mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                        @Override
-                        public void onCompletion(MediaPlayer mp) {
-                            mp.release();
-                        }
-                    });
-                    mediaPlayer.prepare();
-                    mediaPlayer.start();
-                } catch (IOException e) {
-                    Toast.makeText(view.getContext(),
-                            "can't play the media", Toast.LENGTH_LONG).show();
-                }
-
+                playAudio(audioSelect);
             }
         });
-        String[] fileListStr=filepath.list(myfilter);
+        fileListStr=filepath.list(myfilter);
         ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
         listView.setAdapter(arrayAdapter);
+        registerForContextMenu(listView);
 
     }
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -96,7 +87,7 @@ public class MainActivity extends ActionBarActivity {
             case R.id.action_settings:
                 return true;
             case R.id.action_refresh:
-                String[] fileListStr=filepath.list(myfilter);
+                fileListStr=filepath.list(myfilter);
                 ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
                 listView.setAdapter(arrayAdapter);
                 return true;
@@ -104,8 +95,85 @@ public class MainActivity extends ActionBarActivity {
                 return super.onOptionsItemSelected(item);
         }
 
+    }
 
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v,
+                                    ContextMenu.ContextMenuInfo menuInfo) {
+        if(v.getId()==listView.getId()){
+            AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo)menuInfo;
+            menu.setHeaderTitle(fileListStr[info.position]);
+            String [] menuItem = getResources().getStringArray(R.array.contextMenuItem);
+            for (int i=0 ;i < menuItem.length;i++){
+                menu.add(Menu.NONE,i,0,menuItem[i]);
+            }
+        }
+    }
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+        AdapterView.AdapterContextMenuInfo info =
+                (AdapterView.AdapterContextMenuInfo)item.getMenuInfo();
+        int menuItemId= item.getItemId();
+        String [] menuItem = getResources().getStringArray(R.array.contextMenuItem);
+        String menuName=menuItem[menuItemId];
+        String filename = fileListStr[info.position];
+
+        Toast.makeText(this,String.format("%s is selected for file %s.",menuName,filename),
+                Toast.LENGTH_SHORT).show();
+        String audioPath =filepath.getPath() +File.separator+filename;
+        switch (menuItemId) {
+            case 0:
+                playAudio(audioPath);
+                break;
+            case 1:
+                break;
+            case 2:
+                break;
+            case 3:
+                final File file= new File(audioPath);
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                // Add the buttons
+                builder.setMessage(String.format("Are you sure to delete file %s",filename))
+                        .setTitle("Warning");
+                builder.setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        file.delete();
+                    }
+                });
+                builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        // User cancelled the dialog
+                    }
+                });
+                // Set other dialog properties
+
+                // Create the AlertDialog
+                AlertDialog dialog = builder.create();
+                dialog.show();
+                break;
+            default:
+                break;
+        }
+        return true;
     }
 
 
+    private void playAudio(String filepath) {
+        MediaPlayer mediaPlayer = new MediaPlayer();
+        try {
+            mediaPlayer.setDataSource(filepath);
+            mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                @Override
+                public void onCompletion(MediaPlayer mp) {
+                    mp.release();
+                }
+            });
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+        } catch (IOException e) {
+            Toast.makeText(this,
+                    "can't play the media", Toast.LENGTH_LONG).show();
+        }
+    }
 }
