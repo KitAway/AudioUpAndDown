@@ -6,4 +6,5 @@
     <string name="action_refresh">Refresh</string>
     <string name="ok">Ok</string>
     <string name="cancel">Cancel</string>
+    <string name="edit_filename">Enter the filename</string>
 </resources>
