@@ -3,7 +3,6 @@ package com.example.d038395.audioupanddown;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
@@ -19,7 +18,6 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ListView;
-import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -37,15 +35,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Iterator;
 import java.util.UUID;
-import java.util.zip.Inflater;
 
 public class MainActivity extends ActionBarActivity {
 
     private  ListView listView;
-    private  File filepath;
+    public static  File filepath;
     private String[] fileListStr;
     private class myAudioFilenameFilter implements FilenameFilter {
         @Override
@@ -67,6 +65,7 @@ public class MainActivity extends ActionBarActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         String filePathString= Environment.getExternalStorageDirectory().getPath()+
                 File.separator+getString(R.string.app_name);
         filepath= new File(filePathString);
@@ -81,11 +80,19 @@ public class MainActivity extends ActionBarActivity {
                 playAudio(audioSelect);
             }
         });
+        voiceStorage.initialize();
+        voiceStorage.buildFromFile(this);
         refreshFileList();
         registerForContextMenu(listView);
 
+
     }
 
+    @Override
+    protected void onStop() {
+        voiceStorage.storeToFile(this);
+        super.onStop();
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -143,7 +150,7 @@ public class MainActivity extends ActionBarActivity {
         String resultPath = filepath.getPath()+File.separator+filename+".json";
         switch (menuItemId) {
             case 0:
-                playAudio(audioPath, textPath);
+                playAudio(audioPath);
                 break;
             case 1:
                 transcribeAudio(audioPath,textPath);
@@ -207,14 +214,16 @@ public class MainActivity extends ActionBarActivity {
         try {
             fis = new FileInputStream(file);
             final byte[] buffer= new byte[(int)fileLength];
-            if (fis.read(buffer)==-1)
-                throw new IOException();
-            URL url= new URL(getResources().getString(R.string.server_url));
+            fis.read(buffer);
+            String urlString = getString(R.string.server_url);
+            URL url= new URL(urlString);
             myParas mp=new myParas(url,uuid,file,buffer);
             new taskExecute().execute(mp);
             Toast.makeText(this,"Transcribing in background.",Toast.LENGTH_SHORT).show();
         } catch (FileNotFoundException e) {
             Toast.makeText(this,"File not found.",Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
+        } catch (MalformedURLException e){
             e.printStackTrace();
         } catch (IOException e) {
             Toast.makeText(this,"Read file error.",Toast.LENGTH_SHORT).show();
@@ -223,18 +232,21 @@ public class MainActivity extends ActionBarActivity {
 
     }
 
-    private void playAudio(String filepath,String textpath) {
+    private void playAudio(String filepath) {
+
+        String filename =new File(filepath).getName();
         final MediaPlayer mediaPlayer = new MediaPlayer();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LayoutInflater inflater = this.getLayoutInflater();
         final View dialogView = inflater.inflate(R.layout.dialog_player, null);
         builder.setView(dialogView);
-
         final TextView tvStart = (TextView)dialogView.findViewById(R.id.text_start);
         TextView tvDuration = (TextView) dialogView.findViewById(R.id.text_duration);
         final SeekBar seekBar = (SeekBar)dialogView.findViewById(R.id.seekbar_player);
         final TextView tvFilename = ((TextView)dialogView.findViewById(R.id.text_filname));
-        tvFilename.setText((new File(filepath).getName()));
+        TextView para = (TextView)dialogView.findViewById(R.id.text_wholeStory);
+        para.setText(voiceStorage.voiceDict.get(filename).voiceText);
+        tvFilename.setText(filename);
         final ImageButton imageButton = (ImageButton)dialogView.findViewById(R.id.btn_control);
         imageButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -319,6 +331,10 @@ public class MainActivity extends ActionBarActivity {
         fileListStr=filepath.list(myfilter);
         ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
         listView.setAdapter(arrayAdapter);
+        for(String str:fileListStr){
+            if(!voiceStorage.contains(str))
+                new voiceStorage(str,null,null).put();
+        }
     }
     private void changeFileName(String filepath) {
         final File oldFilePath=new File(filepath);
@@ -415,7 +431,13 @@ public class MainActivity extends ActionBarActivity {
                     switch (status) {
                         case "TRANSCRIBED":
                             result+="!!!TRANSCRIBED SUCCESSFULLY!!!";
+                            AlertDialog.Builder builder= new AlertDialog.Builder(MainActivity.this);
+                            if (voiceStorage.contains(file.getName())) {
+                                voiceStorage.voiceDict.get(file.getName()).setJSON(jsObj, builder);
+                            }
+                            else new voiceStorage(file.getName(),null,null).setJSON(jsObj,builder);
                             String wholePare=readJson(jsObj);
+                            voiceStorage.voiceDict.get(file.getName()).setVoiceText(wholePare,builder);
                             //writeIntoFile;
                             publishProgress(progress);
                             return result;
