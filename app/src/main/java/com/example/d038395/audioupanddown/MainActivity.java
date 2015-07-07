@@ -3,10 +3,12 @@ package com.example.d038395.audioupanddown;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.support.v7.app.ActionBarActivity;
+import android.util.Log;
 import android.view.ContextMenu;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -15,14 +17,29 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Iterator;
+import java.util.UUID;
 import java.util.zip.Inflater;
 
 public class MainActivity extends ActionBarActivity {
@@ -122,11 +139,14 @@ public class MainActivity extends ActionBarActivity {
         Toast.makeText(this,String.format("%s is selected for file %s.",menuName,filename),
                 Toast.LENGTH_SHORT).show();
         String audioPath =filepath.getPath() +File.separator+filename;
+        String textPath = filepath.getPath()+File.separator+filename+".str";
+        String resultPath = filepath.getPath()+File.separator+filename+".json";
         switch (menuItemId) {
             case 0:
-                playAudio(audioPath);
+                playAudio(audioPath, textPath);
                 break;
             case 1:
+                transcribeAudio(audioPath,textPath);
                 break;
             case 2:
                 changeFileName(audioPath);
@@ -163,8 +183,47 @@ public class MainActivity extends ActionBarActivity {
         AlertDialog dialog = builder.create();
         dialog.show();
     }
+    private class myParas{
+        URL url;
+        UUID uuid;
+        File file;
+        byte [] buffer;
 
-    private void playAudio(String filepath) {
+        myParas(URL url,UUID uuid,File file,byte buffer[]){
+            this.url=url;
+            this.uuid=uuid;
+            this.file=file;
+            this.buffer=buffer;
+        }
+    }
+    private void transcribeAudio(String filepath, String resultPath) {
+        //MediaPlayer mp =MediaPlayer.create(this, Uri.parse(filepath));
+        //int duration = mp.getDuration();
+
+        UUID uuid= UUID.randomUUID();
+        File file= new File(filepath);
+        long fileLength=file.length();
+        FileInputStream fis;
+        try {
+            fis = new FileInputStream(file);
+            final byte[] buffer= new byte[(int)fileLength];
+            if (fis.read(buffer)==-1)
+                throw new IOException();
+            URL url= new URL(getResources().getString(R.string.server_url));
+            myParas mp=new myParas(url,uuid,file,buffer);
+            new taskExecute().execute(mp);
+            Toast.makeText(this,"Transcribing in background.",Toast.LENGTH_SHORT).show();
+        } catch (FileNotFoundException e) {
+            Toast.makeText(this,"File not found.",Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
+        } catch (IOException e) {
+            Toast.makeText(this,"Read file error.",Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
+        }
+
+    }
+
+    private void playAudio(String filepath,String textpath) {
         final MediaPlayer mediaPlayer = new MediaPlayer();
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LayoutInflater inflater = this.getLayoutInflater();
@@ -174,17 +233,29 @@ public class MainActivity extends ActionBarActivity {
         final TextView tvStart = (TextView)dialogView.findViewById(R.id.text_start);
         TextView tvDuration = (TextView) dialogView.findViewById(R.id.text_duration);
         final SeekBar seekBar = (SeekBar)dialogView.findViewById(R.id.seekbar_player);
+        final TextView tvFilename = ((TextView)dialogView.findViewById(R.id.text_filname));
+        tvFilename.setText((new File(filepath).getName()));
+        final ImageButton imageButton = (ImageButton)dialogView.findViewById(R.id.btn_control);
+        imageButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause();
+                    imageButton.setImageResource(R.drawable.ic_action_play);
+                }
+                else {
+                    mediaPlayer.start();
+                    imageButton.setImageResource(R.drawable.ic_action_pause);
+                }
+
+            }
+        });
         class audioPlayTextUpdate extends AsyncTask<MediaPlayer,Integer,Void> {
             protected Void doInBackground(MediaPlayer... mps) {
                 MediaPlayer mp = mps[0];
                 while(mp!=null) {
                     if(mp.isPlaying())
                         publishProgress(mp.getCurrentPosition());
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
                 }
                 return null;
             }
@@ -206,6 +277,7 @@ public class MainActivity extends ActionBarActivity {
             @Override
             public void onSeekComplete(MediaPlayer mp) {
                 mp.start();
+                imageButton.setImageResource(R.drawable.ic_action_pause);
             }
         });
         try {
@@ -219,6 +291,7 @@ public class MainActivity extends ActionBarActivity {
                 @Override
                 public void onStartTrackingTouch(SeekBar seekBar) {
                     mediaPlayer.pause();
+                    imageButton.setImageResource(R.drawable.ic_action_play);
                 }
 
                 @Override
@@ -275,5 +348,136 @@ public class MainActivity extends ActionBarActivity {
                     }
                 });
         builder.create().show();
+    }
+
+    class taskExecute extends AsyncTask<myParas, Float, String> {
+        protected String doInBackground(myParas... params) {
+            float progress=0;
+            HttpURLConnection httpConn=null;
+            String result="";
+            try {
+                URL url=params[0].url;
+                byte[] buffer=params[0].buffer;
+                UUID uuid=params[0].uuid;
+                File file = params[0].file;
+                result+=file.getName()+"\nResult:\n";
+                httpConn=(HttpURLConnection)url.openConnection();
+                httpConn.setConnectTimeout(7000);
+                httpConn.setRequestMethod("POST");
+                httpConn.setRequestProperty("id", uuid.toString());
+                httpConn.setRequestProperty("audioname", file.getName());
+                httpConn.setRequestProperty("portBias",
+                        Integer.toString(Character.getNumericValue(uuid.toString().charAt(0))));
+                httpConn.setUseCaches(false);
+                httpConn.setDoInput(true);
+                httpConn.setDoOutput(true);
+                DataOutputStream wr =new DataOutputStream(httpConn.getOutputStream());
+                wr.write(buffer);
+                wr.close();
+
+                InputStream is =httpConn.getInputStream();
+                BufferedReader rd = new BufferedReader(new InputStreamReader(is));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while((line=rd.readLine())!=null) {
+                    response.append(line);
+                    response.append('\r');
+                }
+                rd.close();
+
+
+                /*
+                Get data
+                 */
+                boolean loopGetResult=false;
+                if (httpConn.getResponseCode() == httpConn.HTTP_OK) {
+                    loopGetResult=true;
+                    httpConn.disconnect();
+                    String getURL=getResources().getString(R.string.server_url)+
+                            "/status/"+uuid.toString();
+                    url= new URL(getURL);
+                }
+
+                while (loopGetResult) {
+                    httpConn=(HttpURLConnection)url.openConnection();
+                    httpConn.setRequestProperty("portBias",
+                            Integer.toString(Character.getNumericValue(uuid.toString().charAt(0))));
+                    is=httpConn.getInputStream();
+                    rd = new BufferedReader(new InputStreamReader(is));
+                    response = new StringBuilder();
+                    while((line=rd.readLine())!=null) {
+                        response.append(line);
+                        response.append('\r');
+                    }
+                    rd.close();
+                    JSONObject jsObj= new JSONObject(response.toString());
+                    String status=jsObj.getString("status");
+                    switch (status) {
+                        case "TRANSCRIBED":
+                            result+="!!!TRANSCRIBED SUCCESSFULLY!!!";
+                            String wholePare=readJson(jsObj);
+                            //writeIntoFile;
+                            publishProgress(progress);
+                            return result;
+                        case "FAILED":
+                            result+= "!!!TRANSCRIBED FAILED!!!";
+                            publishProgress(progress);
+                            return result;
+                        case "QUEUED":
+                        case "TRANSCRIBING":
+                            publishProgress(progress);
+                            Thread.sleep(1000);
+                            break;
+                        default:
+                            result+= "!!!UNKNOWN ERROR!!!";
+                            publishProgress(progress);
+                            return result;
+                    }
+                }
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this,
+                        "TimeOut when connect server.",Toast.LENGTH_SHORT).show();
+                if(httpConn!=null){
+                    httpConn.disconnect();
+                    httpConn=null;
+                }
+            }
+            return result;
+        }
+
+        protected void onProgressUpdate(Float... progress) {
+
+        }
+
+        protected void onPostExecute(String result) {
+            Toast.makeText(MainActivity.this,result,Toast.LENGTH_LONG).show();
+        }
+
+
+        private String readJson(JSONObject jsObj) {
+            JSONObject jsBlock;
+            String key;
+            StringBuilder sBuffer=new StringBuilder();
+            try {
+                JSONObject js=jsObj.getJSONObject("channels").
+                        getJSONObject("firstChannelLabel").
+                        getJSONObject("lattice").getJSONObject("1").
+                        getJSONObject("links");
+                Iterator<?> keys = js.keys();
+                while (keys.hasNext()) {
+                    key=(String)keys.next();
+                    jsBlock=js.getJSONObject(key);
+                    if (jsBlock.getBoolean("best_path")) {
+                        key=jsBlock.getString("word");
+                        if (key.charAt(0)=='!')
+                            continue;
+                        sBuffer.append(key).append(' ');
+                    }
+                }
+            } catch (JSONException e) {
+                Log.e("error", "caused by json.");
+            }
+            return sBuffer.toString();
+        }
     }
 }

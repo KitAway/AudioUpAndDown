@@ -12,6 +12,8 @@ public class MyUtils {
         second=milli/1000;
         minute=second/60;
         second%=60;
+        if (minute<60)
+            return String.format("%02d:%02d",minute,second);
         hour=minute/60;
         minute%=60;
         return String.format("%d:%02d:%02d",hour,minute,second);
