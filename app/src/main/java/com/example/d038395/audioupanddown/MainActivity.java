@@ -7,6 +7,8 @@ import android.media.MediaRecorder;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.support.v7.app.ActionBarActivity;
 import android.util.Log;
 import android.view.ContextMenu;
@@ -49,6 +51,7 @@ public class MainActivity extends ActionBarActivity {
     private  ListView listView;
     public static  File filepath;
     private String[] fileListStr;
+    MyUtils.TTs tts;
     private class myAudioFilenameFilter implements FilenameFilter {
         @Override
         public boolean accept(File dir, String filename) {
@@ -89,6 +92,7 @@ public class MainActivity extends ActionBarActivity {
         refreshFileList();
         registerForContextMenu(listView);
 
+        tts= new MyUtils.TTs(this);
 
     }
 
@@ -111,7 +115,6 @@ public class MainActivity extends ActionBarActivity {
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
-
         //noinspection SimplifiableIfStatement
         switch (id){
             case R.id.action_settings:
@@ -210,6 +213,8 @@ public class MainActivity extends ActionBarActivity {
             this.buffer=buffer;
         }
     }
+
+
     private void transcribeAudio(String filepath, String resultPath) {
         //MediaPlayer mp =MediaPlayer.create(this, Uri.parse(filepath));
         //int duration = mp.getDuration();
@@ -538,7 +543,7 @@ public class MainActivity extends ActionBarActivity {
         final String mFileName =String.format("%s%s%d-%02d-%02d_%02d-%02d-%02d.mp4",
                 filepath.getPath(),File.separator,
                 rightNow.get(Calendar.YEAR),rightNow.get(Calendar.MONTH),
-                rightNow.get(Calendar.DAY_OF_MONTH),rightNow.get(Calendar.HOUR),
+                rightNow.get(Calendar.DAY_OF_MONTH),rightNow.get(Calendar.HOUR_OF_DAY),
                 rightNow.get(Calendar.MINUTE),rightNow.get(Calendar.SECOND));
         final MediaRecorder mRecorder = new MediaRecorder();
         mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -548,14 +553,6 @@ public class MainActivity extends ActionBarActivity {
         mRecorder.setAudioChannels(1);
         mRecorder.setAudioSamplingRate(44100);
         mRecorder.setAudioEncodingBitRate(44100);
-        try {
-            mRecorder.prepare();
-            mRecorder.start();
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this,e.toString(),Toast.LENGTH_LONG).show();
-            return;
-        }
 
         final File oldFilePath=new File(mFileName);
         final AlertDialog.Builder builder =new AlertDialog.Builder(this);
@@ -563,7 +560,7 @@ public class MainActivity extends ActionBarActivity {
         final View dialogView = inflater.inflate(R.layout.dialog_rename_file, null);
         EditText editText=(EditText) dialogView.findViewById(R.id.edit_filename);
         editText.setText(oldFilePath.getName());
-        editText.setSelection(0,oldFilePath.getName().length()-4);
+        editText.setSelection(0, oldFilePath.getName().length() - 4);
         builder.setTitle("Enter new filename")
                 .setView(dialogView)
                 .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
@@ -583,7 +580,7 @@ public class MainActivity extends ActionBarActivity {
                         oldFilePath.delete();
                     }
                 });
-        AlertDialog.Builder abuilder = new AlertDialog.Builder(this);
+        final AlertDialog.Builder abuilder = new AlertDialog.Builder(this);
         abuilder.setMessage("Recording")
                 .setOnDismissListener(new DialogInterface.OnDismissListener() {
                     @Override
@@ -593,6 +590,50 @@ public class MainActivity extends ActionBarActivity {
                         builder.create().show();
                     }
                 });
-        abuilder.create().show();
+
+        try {
+            mRecorder.prepare();
+            tts.SpeakText("What do you want to tell me?", "recording");
+            AsyncTask<MyUtils.TTs,Void,Void> asyncTask = new AsyncTask<MyUtils.TTs,Void,Void>() {
+                @Override
+                protected Void doInBackground(MyUtils.TTs...params) {
+                    final boolean[] bool=new boolean[]{true};
+                    params[0].getTTs().setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override
+                        public void onStart(String utteranceId) {
+
+                        }
+                        @Override
+                        public void onDone(String utteranceId) {
+                            bool[0]=false;
+                        }
+
+                        @Override
+                        public void onError(String utteranceId) {
+                            bool[0]=false;
+                        }
+                    });
+                    while(bool[0]){
+                        try{
+                            Thread.sleep(100);
+                        } catch (InterruptedException e ){
+                            e.printStackTrace();
+                        }
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void onPostExecute(Void aVoid) {
+                    abuilder.create().show();
+                    mRecorder.start();
+                }
+            };
+            asyncTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR,tts);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this,e.toString(),Toast.LENGTH_LONG).show();
+        }
+
     }
 }

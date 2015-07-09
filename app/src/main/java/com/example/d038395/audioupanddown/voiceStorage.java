@@ -94,19 +94,19 @@ public class voiceStorage implements Serializable{
 
     static public void buildFromFile(Context context){
         if(!data_storage.isFile()){
-            Toast.makeText(context,"No previous data stored.",Toast.LENGTH_LONG).show();
+            Toast.makeText(context,"No previous data stored.",Toast.LENGTH_SHORT).show();
         }
         else {
             try {
                 FileInputStream fin = new FileInputStream(data_storage);
                 ObjectInputStream objIn = new ObjectInputStream(fin);
                 voiceDict=(HashMap<String ,voiceStorage>)objIn.readObject();
-                Toast.makeText(context,"Read scuccessfully.",Toast.LENGTH_LONG).show();
+                Toast.makeText(context,"Read scuccessfully.",Toast.LENGTH_SHORT).show();
                 objIn.close();
                 fin.close();
             } catch (ClassNotFoundException | IOException e) {
                 e.printStackTrace();
-                Toast.makeText(context,e.toString(),Toast.LENGTH_LONG).show();
+                Toast.makeText(context,e.toString(),Toast.LENGTH_SHORT).show();
             }
         }
     }
@@ -121,12 +121,12 @@ public class voiceStorage implements Serializable{
             FileOutputStream fout = new FileOutputStream(data_storage);
             ObjectOutputStream objOut = new ObjectOutputStream(fout);
             objOut.writeObject(voiceDict);
-            Toast.makeText(context,"Stored successfully.",Toast.LENGTH_LONG).show();
+            Toast.makeText(context,"Stored successfully.",Toast.LENGTH_SHORT).show();
             objOut.close();
             fout.close();
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(context,e.toString(),Toast.LENGTH_LONG).show();
+            Toast.makeText(context,e.toString(),Toast.LENGTH_SHORT).show();
         }
     }
 
