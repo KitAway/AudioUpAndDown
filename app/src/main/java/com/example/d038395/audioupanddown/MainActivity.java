@@ -3,6 +3,7 @@ package com.example.d038395.audioupanddown;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.media.MediaPlayer;
+import android.media.MediaRecorder;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
@@ -37,6 +38,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.UUID;
 
@@ -48,7 +52,7 @@ public class MainActivity extends ActionBarActivity {
     private class myAudioFilenameFilter implements FilenameFilter {
         @Override
         public boolean accept(File dir, String filename) {
-            String[] _ext ={".mp3",".wav",".3gp",".m4a"};
+            String[] _ext ={".mp3",".wav",".3gp",".m4a",".mp4"};
             int len=filename.length();
             if(len<=4)
                 return false;
@@ -115,6 +119,8 @@ public class MainActivity extends ActionBarActivity {
             case R.id.action_refresh:
                 refreshFileList();
                 return true;
+            case R.id.action_record:
+                recording();
             default:
                 return super.onOptionsItemSelected(item);
         }
@@ -175,6 +181,7 @@ public class MainActivity extends ActionBarActivity {
                 .setTitle("Warning");
         builder.setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int id) {
+                voiceStorage.voiceDict.get(file.getName()).remove();
                 file.delete();
                 refreshFileList();
             }
@@ -218,7 +225,7 @@ public class MainActivity extends ActionBarActivity {
             String urlString = getString(R.string.server_url);
             URL url= new URL(urlString);
             myParas mp=new myParas(url,uuid,file,buffer);
-            new taskExecute().execute(mp);
+            new taskExecute().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR,mp);
             Toast.makeText(this,"Transcribing in background.",Toast.LENGTH_SHORT).show();
         } catch (FileNotFoundException e) {
             Toast.makeText(this,"File not found.",Toast.LENGTH_SHORT).show();
@@ -292,6 +299,12 @@ public class MainActivity extends ActionBarActivity {
                 imageButton.setImageResource(R.drawable.ic_action_pause);
             }
         });
+        mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mp) {
+                imageButton.setImageResource(R.drawable.ic_action_play);
+            }
+        });
         try {
             mediaPlayer.setDataSource(filepath);
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -320,7 +333,7 @@ public class MainActivity extends ActionBarActivity {
             tvStart.setText(MyUtils.formatMilliToHMS(mediaPlayer.getCurrentPosition()));
             mediaPlayer.start();
             builder.create().show();
-            asyncTask.execute(mediaPlayer);
+            asyncTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR,mediaPlayer);
         } catch (IOException e) {
             Toast.makeText(this,
                     "can't play the media", Toast.LENGTH_LONG).show();
@@ -329,6 +342,7 @@ public class MainActivity extends ActionBarActivity {
     }
     private void refreshFileList(){
         fileListStr=filepath.list(myfilter);
+        Arrays.sort(fileListStr);
         ArrayAdapter arrayAdapter=new ArrayAdapter<>(this,R.layout.audio_list,fileListStr);
         listView.setAdapter(arrayAdapter);
         for(String str:fileListStr){
@@ -366,8 +380,18 @@ public class MainActivity extends ActionBarActivity {
         builder.create().show();
     }
 
-    class taskExecute extends AsyncTask<myParas, Float, String> {
-        protected String doInBackground(myParas... params) {
+    class resultTrans{
+        String result;
+        String filename;
+        JSONObject json;
+        public resultTrans(String result, String filename, JSONObject json) {
+            this.result = result;
+            this.filename = filename;
+            this.json = json;
+        }
+    }
+    class taskExecute extends AsyncTask<myParas, Float, resultTrans> {
+        protected resultTrans doInBackground(myParas... params) {
             float progress=0;
             HttpURLConnection httpConn=null;
             String result="";
@@ -431,49 +455,51 @@ public class MainActivity extends ActionBarActivity {
                     switch (status) {
                         case "TRANSCRIBED":
                             result+="!!!TRANSCRIBED SUCCESSFULLY!!!";
-                            AlertDialog.Builder builder= new AlertDialog.Builder(MainActivity.this);
-                            if (voiceStorage.contains(file.getName())) {
-                                voiceStorage.voiceDict.get(file.getName()).setJSON(jsObj, builder);
-                            }
-                            else new voiceStorage(file.getName(),null,null).setJSON(jsObj,builder);
-                            String wholePare=readJson(jsObj);
-                            voiceStorage.voiceDict.get(file.getName()).setVoiceText(wholePare,builder);
-                            //writeIntoFile;
-                            publishProgress(progress);
-                            return result;
+                            return new resultTrans(result,file.getName(),jsObj);
                         case "FAILED":
                             result+= "!!!TRANSCRIBED FAILED!!!";
-                            publishProgress(progress);
-                            return result;
+                            return new resultTrans(result,null,null);
                         case "QUEUED":
                         case "TRANSCRIBING":
                             publishProgress(progress);
-                            Thread.sleep(1000);
+                            Thread.sleep(5000);
                             break;
                         default:
                             result+= "!!!UNKNOWN ERROR!!!";
                             publishProgress(progress);
-                            return result;
+                            return new resultTrans(result,null,null);
                     }
                 }
             } catch (Exception e) {
-                Toast.makeText(MainActivity.this,
-                        "TimeOut when connect server.",Toast.LENGTH_SHORT).show();
                 if(httpConn!=null){
                     httpConn.disconnect();
                     httpConn=null;
+                    return null;
                 }
             }
-            return result;
+            return new resultTrans(result,null,null);
         }
 
         protected void onProgressUpdate(Float... progress) {
 
         }
 
-        protected void onPostExecute(String result) {
-            Toast.makeText(MainActivity.this,result,Toast.LENGTH_LONG).show();
+        protected void onPostExecute(resultTrans result) {
+            if(result==null) {
+                Toast.makeText(MainActivity.this,
+                        "TimeOut when connect server.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Toast.makeText(MainActivity.this, result.result, Toast.LENGTH_LONG).show();
+            AlertDialog.Builder builder= new AlertDialog.Builder(MainActivity.this);
+            if (voiceStorage.contains(result.filename)) {
+                voiceStorage.voiceDict.get(result.filename).
+                        setTranscribedResult(readJson(result.json), result.json, builder);
+            }
+            else new voiceStorage(result.filename, null, null).
+                    setTranscribedResult(readJson(result.json),result.json,builder);
         }
+
 
 
         private String readJson(JSONObject jsObj) {
@@ -501,5 +527,68 @@ public class MainActivity extends ActionBarActivity {
             }
             return sBuffer.toString();
         }
+    }
+
+    public void recording(){
+        Calendar rightNow = Calendar.getInstance();
+        final String mFileName =String.format("%s%s%d-%02d-%02d_%02d-%02d-%02d.mp4",
+                filepath.getPath(),File.separator,
+                rightNow.get(Calendar.YEAR),rightNow.get(Calendar.MONTH),
+                rightNow.get(Calendar.DAY_OF_MONTH),rightNow.get(Calendar.HOUR),
+                rightNow.get(Calendar.MINUTE),rightNow.get(Calendar.SECOND));
+        final MediaRecorder mRecorder = new MediaRecorder();
+        mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        mRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        mRecorder.setOutputFile(mFileName);
+        mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+        mRecorder.setAudioChannels(1);
+        mRecorder.setAudioSamplingRate(44100);
+        mRecorder.setAudioEncodingBitRate(44100);
+        try {
+            mRecorder.prepare();
+            mRecorder.start();
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this,e.toString(),Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final File oldFilePath=new File(mFileName);
+        final AlertDialog.Builder builder =new AlertDialog.Builder(this);
+        LayoutInflater inflater = this.getLayoutInflater();
+        final View dialogView = inflater.inflate(R.layout.dialog_rename_file, null);
+        EditText editText=(EditText) dialogView.findViewById(R.id.edit_filename);
+        editText.setText(oldFilePath.getName());
+        editText.setSelection(0,oldFilePath.getName().length()-4);
+        builder.setTitle("Enter new filename")
+                .setView(dialogView)
+                .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        EditText editText = (EditText) dialogView.findViewById(R.id.edit_filename);
+                        String newFilePath = oldFilePath.getParent() +
+                                File.separator +
+                                editText.getText().toString();
+                        oldFilePath.renameTo(new File(newFilePath));
+                        refreshFileList();
+                    }
+                })
+                .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        oldFilePath.delete();
+                    }
+                });
+        AlertDialog.Builder abuilder = new AlertDialog.Builder(this);
+        abuilder.setTitle("Recording")
+                .setOnDismissListener(new DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(DialogInterface dialog) {
+                        mRecorder.stop();
+                        mRecorder.release();
+                        builder.create().show();
+                    }
+                });
+        abuilder.create().show();
     }
 }

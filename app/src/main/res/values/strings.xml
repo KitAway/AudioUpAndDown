@@ -8,4 +8,5 @@
     <string name="cancel">Cancel</string>
     <string name="edit_filename">Enter the filename</string>
     <string name="server_url">http://denethor.cdsdom.polito.it:9999</string>
+    <string name="string_action_record">Record</string>
 </resources>

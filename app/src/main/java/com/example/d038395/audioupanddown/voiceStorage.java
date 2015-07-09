@@ -1,24 +1,19 @@
 package com.example.d038395.audioupanddown;
 
 import android.app.AlertDialog;
-import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.view.KeyEvent;
 import android.widget.Toast;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,16 +30,11 @@ public class voiceStorage implements Serializable{
 
     String voiceText;
     String voiceFileName;
-    String textFileName;
-    String jsonFileName;
     String resultDir;
 
     String transcribedResult;
 
-    File jsonPath;
-    File textPath;
     File voicePath;
-    File resultPath;
 
 
     public voiceStorage(String voiceFileName, String question, String topic) {
@@ -52,16 +42,6 @@ public class voiceStorage implements Serializable{
         voicePath =new File(app_dir+File.separator+this.voiceFileName);
 
         resultDir=this.voicePath.getAbsolutePath() +".result";
-        resultPath=new File(resultDir);
-        if(!resultPath.isDirectory())
-            resultPath.mkdir();
-
-        textFileName = this.voiceFileName +".txt";
-        textPath= new File(resultPath.getPath()+File.separator+this.textFileName);
-
-        jsonFileName =this.voiceFileName +".json";
-        jsonPath = new File (resultPath.getPath()+File.separator+this.jsonFileName);
-
 
 
         this.question=question;
@@ -78,15 +58,6 @@ public class voiceStorage implements Serializable{
         this.voiceFileName = voicePath.getName();
 
         resultDir=this.voicePath.getAbsolutePath() +".result";
-        resultPath=new File(resultDir);
-        if(!resultPath.isDirectory())
-            resultPath.mkdir();
-
-        textFileName = this.voiceFileName +".txt";
-        textPath= new File(resultPath.getPath()+File.separator+this.textFileName);
-
-        jsonFileName =this.voiceFileName +".json";
-        jsonPath = new File (resultPath.getPath()+File.separator+this.jsonFileName);
 
         this.topic=topic;
         this.question=question;
@@ -180,7 +151,7 @@ public class voiceStorage implements Serializable{
                 });
         builder.create().show();
     }
-    private void remove(){
+    public void remove(){
         if (voiceDict.containsKey(this.voiceFileName))
             voiceDict.remove(this.voiceFileName);
     }
@@ -264,14 +235,6 @@ public class voiceStorage implements Serializable{
     private void setVoiceText(String text){
 
         this.voiceText=text;
-        try {
-            FileOutputStream fout = new FileOutputStream(textPath);
-            ObjectOutputStream objOut = new ObjectOutputStream(fout);
-            objOut.writeObject(voiceText);
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
-
     }
 
     public void setVoiceText(final String text, AlertDialog.Builder builder){
@@ -297,15 +260,7 @@ public class voiceStorage implements Serializable{
 
     private void setJSON(JSONObject json){
 
-        try {
-            transcribedResult=json.toString();
-            FileOutputStream fout = new FileOutputStream(jsonPath);
-            ObjectOutputStream objOut = new ObjectOutputStream(fout);
-            objOut.writeObject(transcribedResult);
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
-
+        transcribedResult=json.toString();
     }
 
     public void setJSON(final JSONObject json, AlertDialog.Builder builder){
@@ -327,6 +282,31 @@ public class voiceStorage implements Serializable{
             builder.create().show();
         }
         else setJSON(json);
+    }
+
+    public void setTranscribedResult(final String text,final JSONObject json, AlertDialog.Builder builder){
+        if(transcribedResult!=null || voiceText!=null) {
+            builder.setTitle(this.voiceFileName)
+                    .setMessage("Do you want to change the result transcribed before?")
+                    .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            setJSON(json);
+                            setVoiceText(text);
+                        }
+                    })
+                    .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+
+                        }
+                    });
+            builder.create().show();
+        }
+        else {
+            setJSON(json);
+            setVoiceText(text);
+        }
     }
 
     static public boolean contains(String filename){
