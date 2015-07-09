@@ -295,14 +295,18 @@ public class MainActivity extends ActionBarActivity {
         mediaPlayer.setOnSeekCompleteListener(new MediaPlayer.OnSeekCompleteListener() {
             @Override
             public void onSeekComplete(MediaPlayer mp) {
-                mp.start();
-                imageButton.setImageResource(R.drawable.ic_action_pause);
+                if(mp.getDuration()!=mp.getCurrentPosition()) {
+                    mp.start();
+                    imageButton.setImageResource(R.drawable.ic_action_pause);
+                }
+                else mp.seekTo(0);
             }
         });
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
                 imageButton.setImageResource(R.drawable.ic_action_play);
+                mediaPlayer.pause();
             }
         });
         try {
@@ -322,7 +326,6 @@ public class MainActivity extends ActionBarActivity {
                 @Override
                 public void onStopTrackingTouch(SeekBar seekBar) {
                     int progress = seekBar.getProgress();
-                    tvStart.setText(MyUtils.formatMilliToHMS(progress));
                     mediaPlayer.seekTo(progress);
                 }
             });
@@ -337,6 +340,7 @@ public class MainActivity extends ActionBarActivity {
         } catch (IOException e) {
             Toast.makeText(this,
                     "can't play the media", Toast.LENGTH_LONG).show();
+            mediaPlayer.release();
             e.printStackTrace();
         }
     }
@@ -580,7 +584,7 @@ public class MainActivity extends ActionBarActivity {
                     }
                 });
         AlertDialog.Builder abuilder = new AlertDialog.Builder(this);
-        abuilder.setTitle("Recording")
+        abuilder.setMessage("Recording")
                 .setOnDismissListener(new DialogInterface.OnDismissListener() {
                     @Override
                     public void onDismiss(DialogInterface dialog) {
